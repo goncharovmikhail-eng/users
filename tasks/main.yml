@@ -82,11 +82,14 @@
     mode: '0644'
   loop: "{{ admin_users }}"
  
+- name: settings_time
+  include_tasks: time.yml
+
 # Удаление пользователей. 
-# - name: Remove users not in admin_users
-#   ansible.builtin.user:
-#     name: "{{ item }}"
-#     state: absent
-#     remove: yes
-#   loop: "{{ users_to_remove }}"
+- name: Remove users not in admin_users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: yes
+  loop: "{{ users_to_remove }}"
  

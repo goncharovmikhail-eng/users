@@ -1,0 +1,28 @@
+---
+  - name: Установить пакет chrony
+    ansible.builtin.package:
+      name: chrony
+      state: present
+
+  - name: Включить и запустить службу chronyd
+    ansible.builtin.systemd:
+      name: chronyd
+      enabled: yes
+      state: started
+
+  - name: Установить часовой пояс на Moscow
+    ansible.builtin.command:
+      cmd: timedatectl set-timezone Europe/Moscow
+
+  - name: Включить автоматическую синхронизацию времени по NTP
+    ansible.builtin.command:
+      cmd: timedatectl set-ntp true
+
+  - name: Проверить статус синхронизации времени
+    ansible.builtin.command:
+      cmd: timedatectl
+    register: timedate_status
+
+  - name: Вывести статус
+    ansible.builtin.debug:
+      var: timedate_status.stdout
