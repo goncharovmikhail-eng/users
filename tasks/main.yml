@@ -1,0 +1,92 @@
+- name: Set admin group based on OS family
+  set_fact:
+    admin_group: "{{ 'sudo' if ansible_os_family == 'Debian' else 'wheel' }}"
+
+- name: Ensure admin group exists
+  ansible.builtin.group:
+    name: "{{ admin_group }}"
+    state: present
+ 
+
+- name: Ensure sudo package is installed on Debian-like systems
+  ansible.builtin.package:
+    name: sudo
+    state: present
+  when: ansible_os_family == "Debian"
+ 
+
+# Получаем текущих пользователей в группе
+- name: Get users in admin group
+  ansible.builtin.command: getent group {{ admin_group }}
+  register: admin_group_info
+  changed_when: false
+ 
+
+- name: Extract usernames from group info
+  set_fact:
+    current_admin_usernames: >-
+      {{
+        admin_group_info.stdout.split(':')[-1].split(',') |
+        select('match', '^[a-zA-Z_][a-zA-Z0-9_-]*$') | list
+      }}
+
+- name: Set desired admin usernames
+  set_fact:
+    desired_admin_usernames: "{{ admin_users | map(attribute='username') | list }}"
+
+- name: Determine users to remove from admin group
+  set_fact:
+    users_to_remove: "{{ current_admin_usernames | difference(desired_admin_usernames) }}"
+
+# Создаём пользователей
+- name: Ensure admin users exist
+  ansible.builtin.user:
+    name: "{{ item.username }}"
+    comment: "{{ item.full_name | default('') }} <{{ item.email | default('') }}"
+    shell: /bin/bash
+    groups: "{{ admin_group }}"
+    append: yes
+    state: present
+    password: "{{ item.password | password_hash('sha512') if item.password is defined else omit }}"
+  loop: "{{ admin_users }}"
+ 
+
+# SSH
+- name: Ensure .ssh directory exists
+  ansible.builtin.file:
+    path: "/home/{{ item.username }}/.ssh"
+    state: directory
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: '0700'
+  loop: "{{ admin_users }}"
+ 
+
+- name: Add authorized_keys
+  ansible.builtin.copy:
+    content: "{{ item.ssh_key }}"
+    dest: "/home/{{ item.username }}/.ssh/authorized_keys"
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: '0600'
+  loop: "{{ admin_users }}"
+
+- name: Enable timestamp in bash history
+  ansible.builtin.lineinfile:
+    path: "/home/{{ item.username }}/.bashrc"
+    line: 'export HISTTIMEFORMAT="%F %T "'
+    create: yes
+    state: present
+    owner: "{{ item.username }}"
+    group: "{{ item.username }}"
+    mode: '0644'
+  loop: "{{ admin_users }}"
+ 
+# Удаление пользователей. 
+# - name: Remove users not in admin_users
+#   ansible.builtin.user:
+#     name: "{{ item }}"
+#     state: absent
+#     remove: yes
+#   loop: "{{ users_to_remove }}"
+ 
